@@ -100,7 +100,7 @@ struct sysinfo_t {
 	void	*vdat_addr;
 	u32	vdat_size;
 
-#if IS_ENABLED(CONFIG_LP_ARCH_X86)
+#if IS_ENABLED(CONFIG_LP_ARCH_X86) || IS_ENABLED(CONFIG_LP_ARCH_X64)
 	int x86_rom_var_mtrr_index;
 #endif
 
