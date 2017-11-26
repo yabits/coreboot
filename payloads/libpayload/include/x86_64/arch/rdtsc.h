@@ -35,7 +35,8 @@
 static u64 rdtsc(void)
 {
 	u64 val;
-	__asm__ __volatile__ ("rdtsc" : "=A" (val));
+	__asm__ __volatile__ ("rdtsc; shlq $32,%%rdx; orq %%rdx,%%rax":
+						 "=A" (val) :: "%rdx");
 	return val;
 }
 
