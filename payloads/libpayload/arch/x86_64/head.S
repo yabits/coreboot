@@ -30,6 +30,7 @@
 
 	.code32
 	.global _entry
+	.extern start_main
 	.text
 	.align 4
 
@@ -69,129 +70,90 @@ _init:
 	/* No interrupts, please. */
 	cli
 
-	/* Store EAX and EBX */
-	movl %eax, loader_eax
-	movl %ebx, loader_ebx
-
-	/* Copy argv[] and argc as demanded by the Payload API,
-	 * see http://www.coreboot.org/Payload_API and exec.S.
-	 */
-	cmpl $CB_MAGIC_VALUE, CB_MAGIC(%esp)
-	jne 1f
-
-	movl CB_ARGV(%esp), %eax
-	movl %eax, main_argv
-
-	movl CB_ARGC(%esp), %eax
-	movl %eax, main_argc
-1:
-	/* Store current stack pointer and set up new stack. */
-	movl %esp, %eax
 	movl $_stack, %esp
-	pushl %eax
 
-	/* Enable special x86 functions if present. */
-	pushl %eax
-	pushl %ebx
-	pushl %ecx
-	pushl %edx
+	call check_cpuid
+	call check_long_mode
 
-	movl $0, %eax
-	cpuid
-	/* Test if CPUID(eax=1) is available. */
-	test %eax, %eax
-	je cpuid_long_mode
+	call set_up_page_tables
+	call enable_paging
 
-	/* Get CPU features. */
-	movl $1, %eax
-	cpuid
+	lgdtl (gdt64_pointer)
 
-cpuid_fpu:
-	/* Test if x87 FPU is present */
-	test $1, %edx
-	je cpuid_sse
+	ljmpl $8, $long_mode_start
 
-	fninit
-	movl %cr0, %eax
-	andl $0xFFFFFFFB, %eax	/* clear EM */
-	orl $0x00000022, %eax	/* set MP, NE */
-	movl %eax, %cr0
+	movl $0x2f4b2f4f, 0xb8000
+	hlt
 
-cpuid_sse:
-	/* Test if SSE is available */
-	test $0x02000000, %edx
-	je cpuid_long_mode
 
-	movl %cr4, %eax
-	orl $0x00000600, %eax	/* set OSFXSR, OSXMMEXCPT */
-	movl %eax, %cr4
+check_cpuid:
+	pushf
+	pop %eax
 
-cpuid_long_mode:
+	movl %eax, %ecx
+
+	xor $1<<21, %eax
+
+	push %eax
+	popf
+
+	pushf
+	pop %eax
+
+	push %eax
+	popf
+
+	cmp %ecx, %eax
+	je _leave
+	ret
+
+check_long_mode:
 	/* Detect 64-bit CPU */
-	movl $0x80000000, %eax
+	mov $0x80000000, %eax
 	cpuid
-	cmpl $0x80000000, %eax
-	jbe _leave /* The CPU does not have 64-bit mode */
+	cmp $0x80000001, %eax
+	jb _leave
 
-	movl $0x80000001, %eax
+	mov $0x80000001, %eax
 	cpuid
-	bt $29, %edx /* Test for bit 29 */
-	jz _leave /* Long mode is not supported */
-	jmp enable_long_mode
+	test $0x20000000, %edx
+	je _leave
+	ret
 
-enable_long_mode:
-	movl %cr4, %eax
-	bts $5, %eax
-	movl %eax, %cr4
+set_up_page_tables:
+	mov $pdt, %edi
+	mov $0b10000011, %eax
 
-	cld
-	movl $0xa000, %edi
+	mov $0, %ecx
+map_pdt:
+	mov %eax, (%edi)
+	add $0x200000, %eax
+	add $0x8, %edi
 
-	movl $0xb00f, %eax
-	stosw
+	inc %ecx
+	cmp $0x200, %ecx
+	jne map_pdt
 
-	xorl %eax, %eax
-	movl $0x03ff, %ecx
-	rep stosw
+	ret
 
-	movl $0xc00f, %eax
-	stosw
+enable_paging:
+	mov $pml4, %eax
+	mov %eax, %cr3
 
-	xorl %eax, %eax
-	movl $0x03ff, %ecx
-	rep stosw
+	mov %cr4, %eax
+	or $0x20, %eax
+	mov %eax, %cr4
 
-	movw $0x018f, %ax
-	stosw
-
-	xorl %eax, %eax
-	movl $0x03ff, %ecx
-	rep stosw
-
-	movl $0x2000, %eax
-	movl %eax, %cr3
-
-	/* Entering long mode */
-	movl $0xc0000080, %ecx
+	mov $0xc0000080, %ecx
 	rdmsr
-	bts $8, %eax
+	or $0x100, %eax
 	wrmsr
 
-	/* Enable paging */
-	movl %cr0, %eax
-	bts $31, %eax
-	movl %eax, %cr0
+	mov %cr0, %eax
+	or $0x80000000, %eax
+	mov %eax, %cr0
 
-	/* Entering long mode from compatibility mode */
-	movl gdt, %esi
-	movl $0x1000, %edi
-	movl $(8 * 3), %ecx
-	rep movsb
-
-	lgdt gdt_pointer
-	.byte 0xea
-	.long long_mode_start
-	.word 8
+	ret
 
 _leave:
 	/* Restore old stack. */
@@ -202,22 +164,42 @@ _leave:
 
 	.code64
 long_mode_start:
-	/*
-	mov edi, dword ptr [esp + 4]
-	mov rsi, qword ptr [esp + 8]
-	*/
+	mov $0, %ax
+	mov %ax, %ss
+	mov %ax, %ds
+	mov %ax, %es
+	mov %ax, %fs
+	mov %ax, %gs
 
+	//.extern start_main
+	//call start_main
+	mov $start_main, %rax
+	jmp *%rax
 
-	mov start_main, %rax
-	call *(%rax)
+	movq $0x2f592f412f4b2f4f, %rax
+	movq %rax, 0xb8000
+	hlt
 
 	.data
-gdt_pointer:
-	.word 3 * 8
-	.long 0x1000
+	.align 0x1000
+pml4:
+	.quad pdpt + 0x0003
+	.align 0x1000
+pdpt:
+	.quad pdt + 0x0003
+	.quad pdt + 0x1003
+	.quad pdt + 0x2003
+	.quad pdt + 0x3003
+	.align 0x1000
+pdt:
+	.space 0x4000, 0
 
-gdt:
-	.quad 0x0000000000000000 /* Null descriptor */
-	.quad 0x0020980000000000 /* Code descriptor */
-	.quad 0x0000900000000000 /* Data descriptor */
+gdt64:
+    .quad 0
+gdt64_code:
+    .quad (1<<43) | (1<<44) | (1<<47) | (1<<53)
+gdt64_pointer:
+    .word gdt64_pointer - gdt64 - 1
+    .quad gdt64
+gdt64_end:
 

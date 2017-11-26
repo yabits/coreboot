@@ -32,6 +32,11 @@ OUTPUT_ARCH(i386:x86-64)
 
 ENTRY(_entry)
 
+PHDRS
+{
+	text PT_LOAD AT (0x100000);
+}
+
 SECTIONS
 {
 	. = CONFIG_LP_BASE_ADDRESS;
@@ -43,7 +48,7 @@ SECTIONS
 		*(.text._entry)
 		*(.text)
 		*(.text.*)
-	}
+	} :text
 
 	.rodata : {
 		*(.rodata)

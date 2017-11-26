@@ -58,6 +58,7 @@ BASE=`dirname $0`
 # This variable will contain the command line that the user wants to
 # pass to gas
 
+_ASFLAGS=
 CMDLINE=
 
 # Process various flags that would change our behavior
@@ -65,11 +66,14 @@ CMDLINE=
 while [ $# -gt 0 ]; do
 	case $1 in
 	    --32)
+		_ASFLAGS="${_ASFLAGS} --32"
 		shift
 		continue
 		;;
 	    --64)
-		error "Invalid option --64 - only 32 bit architectures are supported"
+		_ASFLAGS="${_ASFLAGS} --64"
+		shift
+		continue
 		;;
 	    -debug-wrapper)
 		DEBUGME=1
@@ -84,7 +88,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-_ASFLAGS="--32 -I$_INCDIR"
+_ASFLAGS="${_ASFLAGS} -I$_INCDIR"
 
 if [ $DEBUGME -eq 1 ]; then
 echo "$DEFAULT_AS $_ASFLAGS $CMDLINE"

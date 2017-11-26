@@ -126,8 +126,9 @@ while [ $# -gt 0 ]; do
 		shift
 		continue
 		;;
-	    -m64)
-		error "Invalid option --64 - only 32 bit architectures are supported"
+	    -m64|-fno-stack-protector)
+		shift
+		continue
 		;;
 	    -c)
 		DOLINK=0

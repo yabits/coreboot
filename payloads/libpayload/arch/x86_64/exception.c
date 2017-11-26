@@ -174,7 +174,6 @@ void exception_dispatch(void)
 void exception_init(void)
 {
 	exception_stack_end = exception_stack + ARRAY_SIZE(exception_stack);
-	exception_init_asm();
 }
 
 void exception_install_hook(exception_hook h)
